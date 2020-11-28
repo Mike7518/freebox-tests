@@ -9,7 +9,6 @@ import hmac
 from zeroconf import ServiceBrowser, Zeroconf
 from hashlib import sha1
 import binascii
-import base64
 
 app_id = "fr.freebox.test_app"
 app_version = "0.0.2"
