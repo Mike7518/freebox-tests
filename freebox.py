@@ -5,7 +5,11 @@ import requests
 import json
 import os
 import time
+import hmac
 from zeroconf import ServiceBrowser, Zeroconf
+from hashlib import sha1
+import binascii
+import base64
 
 app_id = "fr.freebox.test_app"
 app_version = "0.0.2"
@@ -41,6 +45,7 @@ def parse_errors(response):
             print("Error : Request has failed !")
             print(response_dict["msg"])
             print(f"Error code : {response_dict['error_code']}")
+            exit()
 
         # No errors, return response JSON as a dict
         return response_dict
@@ -139,3 +144,33 @@ else:
     print("Error : Could not get authorization.")
     print(f"Status : {response_dict['result']['status']}")
     exit()
+
+# --- Starting a session ---
+# Get the challenge value by sending an explicit request
+challenge = parse_errors(requests.get(f"{api_url}/login/", verify="freebox_ecc_root_ca.pem"))["result"]["challenge"]
+print("Challenge acquired.")
+
+# Calculate HMAC-SHA1(app_token, challenge) to get password
+password = binascii.hexlify(hmac.new(app_token.encode(), challenge.encode(), sha1).digest()).decode()
+print(f"password = {password}")
+
+# Open session
+payload = {
+    "app_id": app_id,
+    "password": password
+}
+
+session_request_dict = parse_errors(requests.post(f"{api_url}/login/session/", json=payload, verify="freebox_ecc_root_ca.pem"))
+
+# Extract data from response
+session_token = session_request_dict["result"]["session_token"]
+permissions = session_request_dict["result"]["permissions"]
+print(f"Permissions : {permissions}")
+
+# Create "requests" session that will use authentication header
+authenticated_session = requests.Session()
+authenticated_session.headers.update({"X-Fbx-App-Auth": session_token})
+print(parse_errors(authenticated_session.get(f"{api_url}/connection/", verify="freebox_ecc_root_ca.pem")))
+
+# Close current session
+parse_errors(requests.post(f"{api_url}/login/logout/", verify="freebox_ecc_root_ca.pem"))
